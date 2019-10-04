@@ -149,6 +149,12 @@ int main (void)
     }
   }
 
+  SDL_Rect win_material;
+  win_material.x = 0;
+  win_material.y = 0;
+  win_material.w = 216;
+  win_material.h = 200;
+
   while (running) {
 
     SDL_Event event;
@@ -204,9 +210,8 @@ int main (void)
       for (vector<SDL_Rect>::size_type i = 0; i < show_materials.size(); ++i) 
         SDL_RenderCopy(renderer, texture, &materials[show_board[i]], &show_materials[i]);
     else if (game_state == WIN) 
-      SDL_RenderCopy(renderer, win_texture, nullptr, nullptr);
+      SDL_RenderCopy(renderer, win_texture, &win_material, nullptr);
     else {
-      // cout << "result: " << game_state << endl;
       SDL_RenderCopy(renderer, lose_texture, nullptr, nullptr);
     }
 
@@ -215,6 +220,8 @@ int main (void)
 
   IMG_Quit();
   SDL_DestroyTexture(texture);
+  SDL_DestroyTexture(win_texture);
+  SDL_DestroyTexture(lose_texture);
   SDL_DestroyWindow(window);
   SDL_DestroyRenderer(renderer);
   SDL_Quit();
@@ -341,8 +348,8 @@ void doMouseAction (Uint32 mouse_state, int mouse_x, int mouse_y,
       }
     }
   } else if (mouse_state & SDL_BUTTON(SDL_BUTTON_RIGHT)) {
-    if (show_board[index] == 0)
-      show_board[index] = 1;
+    if (show_board[index] == 0 || show_board[index] == 1)
+      show_board[index] ^= 1;
   }
 }
 
