@@ -1,18 +1,24 @@
 #include <iostream>
+#include <string>
 #include <vector>
 #include <time.h>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_timer.h>
 #include <SDL2/SDL_image.h>
+#include <SDL2/SDL_ttf.h>
 using namespace std;
 
 const int BOARD_SIZE_W = 9;
 const int BOARD_SIZE_H = 9;
 
+const int DISPLAY_HEIGHT = 100;
+
 const int WINDOW_WIDTH  = BOARD_SIZE_W * 64;
 const int WINDOW_HEIGHT = BOARD_SIZE_H * 64;
 
-const int number_of_bombs = BOARD_SIZE_H * BOARD_SIZE_W / 5;
+const int number_of_bombs = BOARD_SIZE_H * BOARD_SIZE_W / 7;
+
+const int FONT_SIZE = 30;
 
 enum GameState {WIN, LOSE, UNDETERMINED};
 
@@ -38,14 +44,17 @@ bool vcontains(vector<Point> vpoint, Point p)
 
 vector<int> determine_hidden_board (void);
 
-void doMouseAction (Uint32 mouse_state, int mouse_x, int mouse_y,
+int doMouseAction (Uint32 mouse_state, int mouse_x, int mouse_y,
                     vector<int> &show_board, vector<int> &hidden_board);
 
 int win_or_lose (vector<int> &show_board, vector<int> & hidden_board, Point mouse);
 
+SDL_Surface *loadFont(TTF_Font *, SDL_Color &, string);
+
 int main (void)
 {
-  bool reveal = false;
+  bool reveal         = false;
+  int remaining_bombs = number_of_bombs;
   
   srand(time(0));
 
@@ -54,6 +63,9 @@ int main (void)
   
   if (IMG_Init(IMG_INIT_PNG) != IMG_INIT_PNG)
     cerr << "Cannot initialize image: " << SDL_GetError() << endl;
+
+  if (TTF_Init() != 0)
+    cerr << "Cannot initialize ttf: " << TTF_GetError() << endl;
 
   SDL_Window *window;
   window = SDL_CreateWindow("Minesweeper", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
@@ -106,6 +118,12 @@ int main (void)
   if (!lose_texture)
     cerr << "fail to create lose texture: " << SDL_GetError() << endl;
 
+  // Load fonts
+  TTF_Font *font = TTF_OpenFont("resource/Cousine for Powerline.ttf", FONT_SIZE);
+
+  if (!font)
+    cerr << "Cannot load font: " << TTF_GetError() << endl;
+
   // hidden board
   vector<int> hidden_board = determine_hidden_board();
   vector<int> show_board(BOARD_SIZE_W * BOARD_SIZE_H, 0);
@@ -155,6 +173,8 @@ int main (void)
   win_material.w = 216;
   win_material.h = 200;
 
+  // SDL_Color text_color{0, 0, 255, 255};
+
   while (running) {
 
     SDL_Event event;
@@ -175,7 +195,10 @@ int main (void)
       mouse_x = (int)(mouse_x / BOARD_SQUARE_WIDTH);
       mouse_y = (int)(mouse_y / BOARD_SQUARE_HEIGHT);
 
-      doMouseAction(mouse_state, mouse_x, mouse_y, show_board, hidden_board);
+      int mouse_result = doMouseAction(mouse_state, mouse_x, mouse_y, show_board, hidden_board);
+
+      if (mouse_result == -1)
+        --remaining_bombs;
 
       const Uint8 *state = SDL_GetKeyboardState(nullptr);
 
@@ -185,8 +208,9 @@ int main (void)
         running = false;
       else if (state[SDL_SCANCODE_SPACE]) {
         game_state = UNDETERMINED;
-        reveal = false;
-        hidden_board = determine_hidden_board();
+        reveal          = false;
+        remaining_bombs = number_of_bombs;
+        hidden_board    = determine_hidden_board();
         for (vector<int>::size_type i = 0; i < show_board.size(); ++i)
           show_board[i] = 0;
       } else if (state[SDL_SCANCODE_RETURN])
@@ -203,13 +227,36 @@ int main (void)
     else if (win_or_lose_or_nothing == -1 && game_state == UNDETERMINED)
       game_state = LOSE;
 
-    if (reveal)
+    if (reveal) {
       for (vector<SDL_Rect>::size_type i = 0; i < show_materials.size(); ++i) 
         SDL_RenderCopy(renderer, texture, &materials[hidden_board[i]], &show_materials[i]);
-    else if (game_state == UNDETERMINED) 
+    } else if (game_state == UNDETERMINED) {
       for (vector<SDL_Rect>::size_type i = 0; i < show_materials.size(); ++i) 
         SDL_RenderCopy(renderer, texture, &materials[show_board[i]], &show_materials[i]);
-    else if (game_state == WIN) 
+
+      // string display_text("Bombs: ");
+      // display_text += to_string(remaining_bombs);
+      // SDL_Surface * text_surface = loadFont(font, text_color, display_text.c_str());
+
+      // if (!text_surface)
+      //   cerr << "Cannot create text surface: " << SDL_GetError() << endl;
+
+      // SDL_Texture *text_texture = SDL_CreateTextureFromSurface(renderer, text_surface);
+
+      // SDL_FreeSurface(text_surface);
+
+      // if (!text_texture)
+      //   cerr << "Cannot create text texture: " << SDL_GetError() << endl;
+    
+      // SDL_Rect text_rect;
+    
+      // text_rect.x = 10;
+      // text_rect.y = WINDOW_HEIGHT - DISPLAY_HEIGHT;
+      // text_rect.w = WINDOW_WIDTH - 20;
+      // text_rect.h = DISPLAY_HEIGHT;
+      // SDL_RenderCopy(renderer, text_texture, nullptr, &text_rect);
+    
+    } else if (game_state == WIN) 
       SDL_RenderCopy(renderer, win_texture, &win_material, nullptr);
     else {
       SDL_RenderCopy(renderer, lose_texture, nullptr, nullptr);
@@ -217,7 +264,8 @@ int main (void)
 
     SDL_RenderPresent(renderer);
   }
-
+	
+  TTF_Quit();
   IMG_Quit();
   SDL_DestroyTexture(texture);
   SDL_DestroyTexture(win_texture);
@@ -296,7 +344,8 @@ vector<int> determine_hidden_board (void)
   return hidden_board;
 }
 
-void doMouseAction (Uint32 mouse_state, int mouse_x, int mouse_y,
+// 1 => left; -1 => right; 0 => other
+int doMouseAction (Uint32 mouse_state, int mouse_x, int mouse_y,
                     vector<int> &show_board, vector<int> &hidden_board)
 {
   vector<int>::size_type index = mouse_y * BOARD_SIZE_W + mouse_x;
@@ -347,10 +396,15 @@ void doMouseAction (Uint32 mouse_state, int mouse_x, int mouse_y,
 
       }
     }
+    return 1;
   } else if (mouse_state & SDL_BUTTON(SDL_BUTTON_RIGHT)) {
     if (show_board[index] == 0 || show_board[index] == 1)
       show_board[index] ^= 1;
+
+    return -1;
   }
+
+  return 0;
 }
 
 // 0 => not finished yet; 1 => win; -1 => lose
@@ -369,4 +423,14 @@ int win_or_lose (vector<int> &show_board, vector<int> & hidden_board, Point mous
   } else {
     return 1;
   }
+}
+
+SDL_Surface *loadFont(TTF_Font *font, SDL_Color &color, string text)
+{
+  SDL_Surface *text_surface = TTF_RenderText_Solid(font, text.c_str(), color);
+
+  if (!text_surface)
+    cerr << "Fail to create text surface: " << TTF_GetError() << endl;
+
+  return text_surface;
 }
